@@ -389,7 +389,7 @@ function initBatchRows() {
     container.innerHTML += `
       <div class="row-grid">
         <input type="checkbox" id="b_from_${i}" title="От банка">
-        <input type="text" id="b_name_${i}" placeholder="Категория ${i + 1}">
+        <select id="b_name_${i}" class="category-dropdown" aria-label="Категория ${i + 1}"><option value="">Выберите категорию</option></select>
         <input type="number" id="b_pct_${i}" step="0.5" placeholder="%">
         <input type="text" id="b_mcc_${i}" placeholder="MCC">
       </div>

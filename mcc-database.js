@@ -76,10 +76,7 @@ window.MCC_DIRECTORY = [{"code":"0742","description":"Ветеринарные �
     const el = event.target;
     if (el && (el.id === 'editCatMcc' || /^b_mcc_\d+$/.test(el.id || ''))) renderMccField(el);
   });
-  function populateCategoryDropdown() {
-    const select = document.getElementById('editCatName');
-    if (!select || select.tagName !== 'SELECT') return;
-
+  function populateCategoryDropdowns() {
     const preferred = [
       'Кафе',
       'Кафе и рестораны',
@@ -105,28 +102,31 @@ window.MCC_DIRECTORY = [{"code":"0742","description":"Ветеринарные �
         return a.localeCompare(b, 'ru');
       });
 
-    const current = select.value;
-    select.innerHTML = '<option value="">Выберите категорию</option>' +
-      categories.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    document.querySelectorAll('#editCatName, .category-dropdown').forEach(select => {
+      if (select.tagName !== 'SELECT') return;
+      const current = select.value;
+      select.innerHTML = '<option value="">Выберите категорию</option>' +
+        categories.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
 
-    // Preserve existing/custom category names when opening an already saved category.
-    if (current && !categories.includes(current)) {
-      const option = document.createElement('option');
-      option.value = current;
-      option.textContent = current;
-      select.appendChild(option);
-    }
-    if (current) select.value = current;
+      // Не теряем ранее сохранённые категории, которых нет в справочнике.
+      if (current && !categories.includes(current)) {
+        const option = document.createElement('option');
+        option.value = current;
+        option.textContent = current;
+        select.appendChild(option);
+      }
+      if (current) select.value = current;
+    });
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
     const search = document.getElementById('searchInput');
     if (search) renderSearchHints();
-      populateCategoryDropdown();
+      populateCategoryDropdowns();
     });
   } else {
     renderSearchHints();
-    populateCategoryDropdown();
+    populateCategoryDropdowns();
   }
 })();

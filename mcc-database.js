@@ -76,8 +76,57 @@ window.MCC_DIRECTORY = [{"code":"0742","description":"Ветеринарные �
     const el = event.target;
     if (el && (el.id === 'editCatMcc' || /^b_mcc_\d+$/.test(el.id || ''))) renderMccField(el);
   });
-  document.addEventListener('DOMContentLoaded', () => {
+  function populateCategoryDropdown() {
+    const select = document.getElementById('editCatName');
+    if (!select || select.tagName !== 'SELECT') return;
+
+    const preferred = [
+      'Кафе',
+      'Кафе и рестораны',
+      'Рестораны',
+      'Продукты',
+      'Супермаркеты',
+      'Детские товары',
+      'ЖКХ'
+    ];
+    const fromDirectory = directory
+      .map(item => String(item.category || '').trim())
+      .filter(Boolean);
+    const categories = [...new Set([...preferred, ...fromDirectory])]
+      .filter(name => name.toLocaleLowerCase('ru') !== 'такси')
+      .sort((a, b) => {
+        const ai = preferred.indexOf(a);
+        const bi = preferred.indexOf(b);
+        if (ai !== -1 || bi !== -1) {
+          if (ai === -1) return 1;
+          if (bi === -1) return -1;
+          return ai - bi;
+        }
+        return a.localeCompare(b, 'ru');
+      });
+
+    const current = select.value;
+    select.innerHTML = '<option value="">Выберите категорию</option>' +
+      categories.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+
+    // Preserve existing/custom category names when opening an already saved category.
+    if (current && !categories.includes(current)) {
+      const option = document.createElement('option');
+      option.value = current;
+      option.textContent = current;
+      select.appendChild(option);
+    }
+    if (current) select.value = current;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
     const search = document.getElementById('searchInput');
     if (search) renderSearchHints();
-  });
+      populateCategoryDropdown();
+    });
+  } else {
+    renderSearchHints();
+    populateCategoryDropdown();
+  }
 })();

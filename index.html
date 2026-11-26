@@ -376,10 +376,46 @@ const DEFAULT_STATE = {
   }
 };
 
-let appState = JSON.parse(localStorage.getItem('cashbackGuideStateV2')) || DEFAULT_STATE;
+const firebaseConfig = {
+  apiKey: "AIzaSyB2AVLgErlqdxKs8xk12Ys_wNmct5ZO4-I",
+  authDomain: "cashback-sync.firebaseapp.com",
+  projectId: "cashback-sync",
+  storageBucket: "cashback-sync.firebasestorage.app",
+  messagingSenderId: "636442274966",
+  appId: "1:636442274966:web:3dfdb9772263c1469aa6b7"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let currentUser = null;
+let cloudReady = false;
+let applyingCloudData = false;
+let cloudUnsubscribe = null;
 
 function saveState() {
-  localStorage.setItem('cashbackGuideStateV2', JSON.stringify(appState));
+  localStorage.setItem(
+    'cashbackGuideStateV2',
+    JSON.stringify(appState)
+  );
+
+  if (!currentUser || !cloudReady || applyingCloudData) return;
+
+  db.collection('users')
+    .doc(currentUser.uid)
+    .collection('appData')
+    .doc('main')
+    .set({
+      state: appState,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    .catch(error => {
+      console.error('Ошибка сохранения Firebase:', error);
+      alert('Не удалось сохранить данные в облако.');
+    });
 }
 
 function normalizeCatName(name) {

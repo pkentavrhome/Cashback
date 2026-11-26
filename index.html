@@ -198,6 +198,12 @@
       <p>Умный выбор карты и планирование слотов</p>
     </div>
     <span id="offlineBadge" style="font-size:11px;background:rgba(255,255,255,0.2);padding:4px 8px;border-radius:8px;">PWA</span>
+    <button id="googleLoginBtn"
+ class="btn btn-outline btn-sm"
+ style="width:auto;background:white;margin-left:8px;"
+ onclick="loginWithGoogle()">
+ Войти через Google
+</button>
   </div>
 </header>
 
@@ -387,6 +393,65 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
+function startCloudSync(user) {
+  currentUser = user;
+
+  if (cloudUnsubscribe) cloudUnsubscribe();
+
+  const docRef = db.collection('users')
+    .doc(user.uid)
+    .collection('appData')
+    .doc('main');
+
+  cloudUnsubscribe = docRef.onSnapshot(async snapshot => {
+    if (snapshot.exists) {
+      applyingCloudData = true;
+      appState = snapshot.data().state;
+      localStorage.setItem(
+        'cashbackGuideStateV2',
+        JSON.stringify(appState)
+      );
+      applyingCloudData = false;
+      cloudReady = true;
+
+      if (typeof render === 'function') render();
+    } else {
+      cloudReady = true;
+      await docRef.set({
+        state: appState,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  }, error => {
+    console.error('Ошибка синхронизации:', error);
+    cloudReady = false;
+  });
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    startCloudSync(user);
+  } else {
+    currentUser = null;
+    cloudReady = false;
+    if (cloudUnsubscribe) cloudUnsubscribe();
+  }
+});
+
+function loginWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(error => {
+    console.error('Ошибка входа:', error);
+    alert('Ошибка входа Google: ' + error.message);
+  });
+}
+
+function logoutFromGoogle() {
+  auth.signOut();
+}
+
+
+
 const auth = firebase.auth();
 const db = firebase.firestore();
 
@@ -417,6 +482,83 @@ function saveState() {
       alert('Не удалось сохранить данные в облако.');
     });
 }
+
+function loginWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+
+  auth.signInWithRedirect(provider).catch(error => {
+    console.error('Ошибка входа:', error);
+    alert('Ошибка Google: ' + error.message);
+  });
+}
+
+function logoutFromGoogle() {
+  auth.signOut();
+}
+
+auth.onAuthStateChanged(user => {
+  const btn = document.getElementById('googleLoginBtn');
+
+  if (!user) {
+    currentUser = null;
+    cloudReady = false;
+
+    if (cloudUnsubscribe) {
+      cloudUnsubscribe();
+      cloudUnsubscribe = null;
+    }
+
+    btn.textContent = 'Войти через Google';
+    btn.onclick = loginWithGoogle;
+    return;
+  }
+
+  currentUser = user;
+  btn.textContent = 'Выйти (' + user.email + ')';
+  btn.onclick = logoutFromGoogle;
+
+  if (cloudUnsubscribe) cloudUnsubscribe();
+
+  const docRef = db.collection('users')
+    .doc(user.uid)
+    .collection('appData')
+    .doc('main');
+
+  cloudUnsubscribe = docRef.onSnapshot(snapshot => {
+    if (snapshot.exists) {
+      const remoteState = snapshot.data().state;
+
+      if (remoteState && remoteState.banks) {
+        applyingCloudData = true;
+        appState = remoteState;
+
+        localStorage.setItem(
+          'cashbackGuideStateV2',
+          JSON.stringify(appState)
+        );
+
+        applyingCloudData = false;
+      }
+
+      cloudReady = true;
+      renderAll();
+
+    } else {
+      docRef.set({
+        state: appState,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        cloudReady = true;
+        renderAll();
+      }).catch(error => {
+        console.error('Ошибка создания базы:', error);
+      });
+    }
+  }, error => {
+    console.error('Ошибка Firestore:', error);
+    cloudReady = false;
+  });
+});
 
 function normalizeCatName(name) {
   return name.trim().toLowerCase();

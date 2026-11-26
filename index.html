@@ -393,10 +393,10 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
   
-const auth= = firebase.auth();
+const auth = firebase.auth();
 const db = firebase.firestore();
 
-let appState = JSON.parse(JSON.stringify(DEFAULT_STTE));
+let appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
   
 function saveState() {
   localStorage.setItem(

@@ -392,10 +392,14 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-  
+
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+let currentUser = null;
+let cloudReady = false;
+let applyingCloudData = false;
+let cloudUnsubscribe = null;
 let appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
   
 function saveState() {

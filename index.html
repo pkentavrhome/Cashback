@@ -468,11 +468,17 @@ function loginWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
   setSyncStatus('Вход в Google…');
 
-  auth.signInWithRedirect(provider).catch(error => {
-    console.error('Ошибка входа:', error);
-    setSyncStatus('Ошибка входа', true);
-    alert('Ошибка Google: ' + error.message);
-  });
+  // Popup works on GitHub Pages without requiring Firebase Hosting redirect proxy.
+  auth.signInWithPopup(provider)
+    .then(result => {
+      console.log('Вход через Google выполнен:', result.user && result.user.email);
+      setSyncStatus('Вход выполнен, загрузка облака…');
+    })
+    .catch(error => {
+      console.error('Ошибка входа:', error.code, error.message, error);
+      setSyncStatus('Ошибка входа', true);
+      alert('Ошибка Google: ' + (error.message || error.code));
+    });
 }
 
 function logoutFromGoogle() {

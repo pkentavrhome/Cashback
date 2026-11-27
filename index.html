@@ -399,17 +399,55 @@ let currentUser = null;
 let cloudReady = false;
 let applyingCloudData = false;
 let cloudUnsubscribe = null;
- 
-let appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
-  
+
+// Сначала восстанавливаем данные этого устройства.
+// Если локального сохранения нет или оно повреждено, используем начальные данные.
+function loadLocalState() {
+  try {
+    const saved = localStorage.getItem('cashbackGuideStateV2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.banks && typeof parsed.banks === 'object' &&
+          !Array.isArray(parsed.banks)) {
+        return parsed;
+      }
+      console.warn('Локальные данные Cashback имеют неверный формат. Используются начальные данные.');
+    }
+  } catch (error) {
+    console.error('Не удалось прочитать локальные данные Cashback:', error);
+  }
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+
+let appState = loadLocalState();
+
+function setSyncStatus(message, isError = false) {
+  const badge = document.getElementById('offlineBadge');
+  if (!badge) return;
+  badge.textContent = message;
+  badge.style.background = isError ? '#b91c1c' : 'rgba(255,255,255,0.2)';
+  badge.title = message;
+}
+
+function isValidAppState(state) {
+  return !!state &&
+    typeof state === 'object' &&
+    state.banks &&
+    typeof state.banks === 'object' &&
+    !Array.isArray(state.banks);
+}
+
 function saveState() {
-  localStorage.setItem(
-    'cashbackGuideStateV2',
-    JSON.stringify(appState)
-  );
+  try {
+    localStorage.setItem('cashbackGuideStateV2', JSON.stringify(appState));
+  } catch (error) {
+    console.error('Ошибка локального сохранения:', error);
+    setSyncStatus('Ошибка на устройстве', true);
+  }
 
   if (!currentUser || !cloudReady || applyingCloudData) return;
 
+  setSyncStatus('Сохранение…');
   db.collection('users')
     .doc(currentUser.uid)
     .collection('appData')
@@ -418,23 +456,30 @@ function saveState() {
       state: appState,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     })
+    .then(() => setSyncStatus('Синхронизировано'))
     .catch(error => {
       console.error('Ошибка сохранения Firebase:', error);
-      alert('Не удалось сохранить данные в облако.');
+      setSyncStatus('Ошибка облака', true);
+      alert('Не удалось сохранить данные в облако. Проверь подключение и правила Firestore.');
     });
 }
 
 function loginWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
+  setSyncStatus('Вход в Google…');
 
   auth.signInWithRedirect(provider).catch(error => {
     console.error('Ошибка входа:', error);
+    setSyncStatus('Ошибка входа', true);
     alert('Ошибка Google: ' + error.message);
   });
 }
 
 function logoutFromGoogle() {
-  auth.signOut();
+  auth.signOut().catch(error => {
+    console.error('Ошибка выхода:', error);
+    alert('Не удалось выйти из Google: ' + error.message);
+  });
 }
 
 auth.onAuthStateChanged(user => {
@@ -451,12 +496,15 @@ auth.onAuthStateChanged(user => {
 
     btn.textContent = 'Войти через Google';
     btn.onclick = loginWithGoogle;
+    setSyncStatus('Локальное хранение');
     return;
   }
 
   currentUser = user;
-  btn.textContent = 'Выйти (' + user.email + ')';
+  cloudReady = false;
+  btn.textContent = 'Выйти (' + (user.email || 'Google') + ')';
   btn.onclick = logoutFromGoogle;
+  setSyncStatus('Загрузка облака…');
 
   if (cloudUnsubscribe) cloudUnsubscribe();
 
@@ -467,39 +515,61 @@ auth.onAuthStateChanged(user => {
 
   cloudUnsubscribe = docRef.onSnapshot(snapshot => {
     if (snapshot.exists) {
-      const remoteState = snapshot.data().state;
+      const remoteState = snapshot.data() && snapshot.data().state;
 
-      if (remoteState && remoteState.banks) {
+      if (isValidAppState(remoteState)) {
+        // Существующие данные в облаке имеют приоритет и загружаются на устройство.
         applyingCloudData = true;
         appState = remoteState;
 
-        localStorage.setItem(
-          'cashbackGuideStateV2',
-          JSON.stringify(appState)
-        );
+        try {
+          localStorage.setItem('cashbackGuideStateV2', JSON.stringify(appState));
+        } catch (error) {
+          console.error('Ошибка локального сохранения облачных данных:', error);
+        }
 
         applyingCloudData = false;
+        cloudReady = true;
+        setSyncStatus('Синхронизировано');
+        renderAll();
+      } else {
+        // Документ существует, но данных в нём нет или формат неверный:
+        // не заменяем локальные данные пустым состоянием.
+        console.warn('В Firestore найден документ без корректного состояния. Загружаем локальные данные.');
+        docRef.set({
+          state: appState,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).then(() => {
+          cloudReady = true;
+          setSyncStatus('Локальные данные загружены в облако');
+          renderAll();
+        }).catch(error => {
+          console.error('Ошибка переноса локальных данных в Firebase:', error);
+          setSyncStatus('Ошибка облака', true);
+        });
       }
-
-      cloudReady = true;
-      renderAll();
-
     } else {
+      // Первое подключение: если облачного документа нет, переносим туда
+      // восстановленное локальное состояние, а не DEFAULT_STATE.
       docRef.set({
         state: appState,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }).then(() => {
         cloudReady = true;
+        setSyncStatus('Данные загружены в облако');
         renderAll();
       }).catch(error => {
         console.error('Ошибка создания базы:', error);
+        setSyncStatus('Ошибка облака', true);
       });
     }
   }, error => {
     console.error('Ошибка Firestore:', error);
     cloudReady = false;
+    setSyncStatus('Ошибка облака', true);
   });
 });
+
 
 function normalizeCatName(name) {
   return name.trim().toLowerCase();

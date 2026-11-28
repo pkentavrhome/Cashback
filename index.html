@@ -641,6 +641,18 @@ function ensureCategoryDirectory() {
       changed = true;
     }
   });
+  // В справочнике показываем все банки из списка выбора, даже если
+  // для банка ещё не добавляли условия и он отсутствует в appState.banks.
+  const bankPicker = document.getElementById('bankSelect');
+  if (bankPicker) {
+    Array.from(bankPicker.options).forEach(option => {
+      const bankName = option.value;
+      if (bankName && !Array.isArray(appState.categoryDirectory[bankName])) {
+        appState.categoryDirectory[bankName] = [];
+        changed = true;
+      }
+    });
+  }
   return changed;
 }
 
@@ -676,7 +688,11 @@ function escapeHtml(value) {
 function renderDirectory() {
   ensureCategoryDirectory();
   const bankSelect = document.getElementById('directoryBankSelect');
-  const banks = Object.keys(appState.banks || {});
+  const banks = Array.from(new Set([
+    ...Array.from(document.getElementById('bankSelect')?.options || []).map(option => option.value).filter(Boolean),
+    ...Object.keys(appState.banks || {}),
+    ...Object.keys(appState.categoryDirectory || {})
+  ]));
   const previous = bankSelect.value;
   bankSelect.innerHTML = banks.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
   if (banks.includes(previous)) bankSelect.value = previous;

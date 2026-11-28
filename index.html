@@ -150,6 +150,10 @@
     .pill-on { background: #dcfce7; color: #15803d; }
     .pill-off { background: #f1f5f9; color: #64748b; }
     .pill-bank { background: #fef3c7; color: #b45309; }
+    .directory-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .directory-row:last-child { border-bottom: 0; }
+    .directory-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .directory-actions button { margin-top:6px; }
 
     nav.bottom-nav {
       position: fixed;
@@ -269,6 +273,7 @@
         🎁 — категория от банка (не тратит слот и суммируется с ручной)
       </div>
       <div id="batchRows"></div>
+      <datalist id="batchCategorySuggestions"></datalist>
 
       <button class="btn btn-primary" style="margin-top:8px;" onclick="saveBatch()">Сохранить категории в банк</button>
     </div>
@@ -278,6 +283,31 @@
       <button class="icon-btn" style="font-size:12px;color:var(--danger);" onclick="clearAllData()">Очистить всё</button>
     </div>
     <div id="banksList"></div>
+  </section>
+
+  <!-- ВКЛАДКА 4: СПРАВОЧНИК КАТЕГОРИЙ -->
+  <section id="tab-directory" class="hidden">
+    <div class="card">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px;">📚 Справочник категорий и MCC</div>
+      <label class="label" for="directoryBankSelect">Банк</label>
+      <select id="directoryBankSelect" onchange="renderDirectory()"></select>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Добавить категорию</div>
+        <label class="label" for="directoryNewName">Название категории</label>
+        <input type="text" id="directoryNewName" placeholder="Например: Супермаркеты">
+        <label class="label" for="directoryNewMcc" style="margin-top:8px;">MCC-коды (через запятую)</label>
+        <input type="text" id="directoryNewMcc" placeholder="5411, 5499">
+        <button class="btn btn-primary" style="margin-top:10px;" onclick="addDirectoryCategory()">Добавить в справочник</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:8px;">
+        <strong>Категории выбранного банка</strong>
+        <span id="directoryCount" style="font-size:12px;color:var(--muted);"></span>
+      </div>
+      <div id="directoryList"></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);padding:0 4px;">Справочник отдельный для каждого банка. Изменения сохраняются вместе с остальными данными и синхронизируются через Firebase.</p>
   </section>
 
 </main>
@@ -293,7 +323,7 @@
     <input type="hidden" id="editCatId">
     <div style="margin-bottom:8px;">
       <label class="label">Название категории</label>
-      <select id="editCatName" aria-label="Категория"><option value="">Выберите категорию</option></select>
+      <input type="text" id="editCatName" list="editCategorySuggestions" aria-label="Категория" placeholder="Введите или выберите категорию"><datalist id="editCategorySuggestions"></datalist>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <div>
@@ -328,6 +358,10 @@
   <button class="nav-btn" id="nav-banks" onclick="switchTab('banks')">
     <span class="nav-icon">⚙️</span>
     <span>Ваши банки</span>
+  </button>
+  <button class="nav-btn" id="nav-directory" onclick="switchTab('directory')">
+    <span class="nav-icon">📚</span>
+    <span>Справочник</span>
   </button>
 </nav>
   
@@ -578,7 +612,124 @@ auth.onAuthStateChanged(user => {
 
 
 function normalizeCatName(name) {
-  return name.trim().toLowerCase();
+  return String(name || '').trim().toLowerCase();
+}
+
+// Создаём справочник из уже имеющихся категорий только при первом запуске.
+// Существующий справочник никогда не перезаписываем данными из банков.
+function ensureCategoryDirectory() {
+  let changed = false;
+  if (!appState.categoryDirectory || typeof appState.categoryDirectory !== 'object' || Array.isArray(appState.categoryDirectory)) {
+    appState.categoryDirectory = {};
+    changed = true;
+  }
+  Object.entries(appState.banks || {}).forEach(([bankName, bankData]) => {
+    if (!Array.isArray(appState.categoryDirectory[bankName])) {
+      const unique = new Map();
+      (bankData.categories || []).forEach(cat => {
+        const name = String(cat.name || '').trim();
+        if (!name) return;
+        const key = normalizeCatName(name);
+        if (!unique.has(key)) unique.set(key, { id: Date.now() + unique.size, name, mcc: [] });
+        const item = unique.get(key);
+        (Array.isArray(cat.mcc) ? cat.mcc : []).forEach(code => {
+          const value = String(code).trim();
+          if (value && !item.mcc.includes(value)) item.mcc.push(value);
+        });
+      });
+      appState.categoryDirectory[bankName] = Array.from(unique.values());
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function getDirectoryNames(bankName) {
+  ensureCategoryDirectory();
+  return (appState.categoryDirectory[bankName] || []).map(item => item.name);
+}
+
+function addOrUpdateDirectoryCategory(bankName, name, mccCodes) {
+  ensureCategoryDirectory();
+  if (!appState.categoryDirectory[bankName]) appState.categoryDirectory[bankName] = [];
+  const list = appState.categoryDirectory[bankName];
+  const key = normalizeCatName(name);
+  let item = list.find(entry => normalizeCatName(entry.name) === key);
+  if (!item) {
+    item = { id: Date.now() + Math.floor(Math.random() * 1000), name: name.trim(), mcc: [] };
+    list.push(item);
+  }
+  (mccCodes || []).forEach(code => { if (code && !item.mcc.includes(code)) item.mcc.push(code); });
+  return item;
+}
+
+function refreshCategorySuggestions() {
+  const bank = document.getElementById('bankSelect')?.value;
+  const datalist = document.getElementById('batchCategorySuggestions');
+  if (datalist) datalist.innerHTML = getDirectoryNames(bank).map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function renderDirectory() {
+  ensureCategoryDirectory();
+  const bankSelect = document.getElementById('directoryBankSelect');
+  const banks = Object.keys(appState.banks || {});
+  const previous = bankSelect.value;
+  bankSelect.innerHTML = banks.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  if (banks.includes(previous)) bankSelect.value = previous;
+  const bank = bankSelect.value;
+  const list = bank ? (appState.categoryDirectory[bank] || []) : [];
+  document.getElementById('directoryCount').textContent = `${list.length} шт.`;
+  const container = document.getElementById('directoryList');
+  if (!bank) { container.innerHTML = '<p style="color:var(--muted);font-size:13px;">Сначала добавьте банк во вкладке «Ваши банки».</p>'; return; }
+  if (!list.length) { container.innerHTML = '<p style="color:var(--muted);font-size:13px;">Пока нет категорий. Добавьте первую выше или сохраните категорию в условиях банка.</p>'; return; }
+  container.innerHTML = list.map(item => `
+    <div class="directory-row">
+      <div style="font-weight:700;">${escapeHtml(item.name)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px;">MCC: ${item.mcc?.length ? escapeHtml(item.mcc.join(', ')) : 'не указаны'}</div>
+      <div class="directory-actions">
+        <button class="btn btn-outline btn-sm" onclick="editDirectoryCategory('${escapeHtml(bank)}', ${Number(item.id)})">Изменить</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="deleteDirectoryCategory('${escapeHtml(bank)}', ${Number(item.id)})">Удалить</button>
+      </div>
+    </div>`).join('');
+}
+
+function addDirectoryCategory() {
+  const bank = document.getElementById('directoryBankSelect').value;
+  const name = document.getElementById('directoryNewName').value.trim();
+  const raw = document.getElementById('directoryNewMcc').value.trim();
+  if (!bank) { alert('Сначала добавьте банк во вкладке «Ваши банки».'); return; }
+  if (!name) { alert('Введите название категории.'); return; }
+  const codes = raw ? raw.split(',').map(x => x.trim()).filter(Boolean) : [];
+  addOrUpdateDirectoryCategory(bank, name, codes);
+  document.getElementById('directoryNewName').value = '';
+  document.getElementById('directoryNewMcc').value = '';
+  saveState(); renderAll();
+}
+
+function editDirectoryCategory(bank, id) {
+  const item = (appState.categoryDirectory[bank] || []).find(x => Number(x.id) === Number(id));
+  if (!item) return;
+  const name = prompt('Название категории:', item.name);
+  if (name === null) return;
+  if (!name.trim()) { alert('Название не может быть пустым.'); return; }
+  const mcc = prompt('MCC-коды через запятую:', (item.mcc || []).join(', '));
+  if (mcc === null) return;
+  const duplicate = (appState.categoryDirectory[bank] || []).find(x => x.id !== item.id && normalizeCatName(x.name) === normalizeCatName(name));
+  if (duplicate) { alert('Такая категория уже есть в справочнике этого банка.'); return; }
+  item.name = name.trim();
+  item.mcc = mcc.split(',').map(x => x.trim()).filter(Boolean);
+  saveState(); renderAll();
+}
+
+function deleteDirectoryCategory(bank, id) {
+  const item = (appState.categoryDirectory[bank] || []).find(x => Number(x.id) === Number(id));
+  if (!item || !confirm(`Удалить «${item.name}» из справочника банка ${bank}?`)) return;
+  appState.categoryDirectory[bank] = appState.categoryDirectory[bank].filter(x => Number(x.id) !== Number(id));
+  saveState(); renderAll();
 }
 
 function initBatchRows() {
@@ -588,7 +739,7 @@ function initBatchRows() {
     container.innerHTML += `
       <div class="row-grid">
         <input type="checkbox" id="b_from_${i}" title="От банка">
-        <select id="b_name_${i}" class="category-dropdown" aria-label="Категория ${i + 1}"><option value="">Выберите категорию</option></select>
+        <input type="text" id="b_name_${i}" list="batchCategorySuggestions" class="category-dropdown" aria-label="Категория ${i + 1}" placeholder="Категория">
         <input type="number" id="b_pct_${i}" step="0.5" placeholder="%">
         <input type="text" id="b_mcc_${i}" placeholder="MCC">
       </div>
@@ -623,6 +774,7 @@ function saveBatch() {
         fromBank,
         active: fromBank
       });
+      addOrUpdateDirectoryCategory(bank, name, mcc);
       added++;
       document.getElementById(`b_name_${i}`).value = '';
       document.getElementById(`b_pct_${i}`).value = '';
@@ -931,6 +1083,7 @@ function deleteCat(bankName, catId) {
 function deleteBank(bankName) {
   if (confirm(`Удалить банк «${bankName}» и все его категории?`)) {
     delete appState.banks[bankName];
+    if (appState.categoryDirectory) delete appState.categoryDirectory[bankName];
     saveState();
     renderAll();
   }
@@ -939,6 +1092,7 @@ function deleteBank(bankName) {
 function clearAllData() {
   if (confirm('Удалить все банки и категории?')) {
     appState.banks = {};
+    appState.categoryDirectory = {};
     saveState();
     renderAll();
   }
@@ -946,6 +1100,7 @@ function clearAllData() {
 
 function openEditModal(bankName, catId) {
   document.getElementById('editBankName').value = bankName;
+  document.getElementById('editCategorySuggestions').innerHTML = getDirectoryNames(bankName).map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
   document.getElementById('editCatId').value = catId || '';
   if (catId) {
     const cat = appState.banks[bankName].categories.find(c => c.id === catId);
@@ -1002,13 +1157,14 @@ function saveEditedCategory() {
     });
   }
 
+  addOrUpdateDirectoryCategory(bankName, name, mcc);
   saveState();
   closeEditModal();
   renderAll();
 }
 
 function switchTab(tab) {
-  ['pay', 'plan', 'banks'].forEach(t => {
+  ['pay', 'plan', 'banks', 'directory'].forEach(t => {
     document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
     document.getElementById(`nav-${t}`).classList.toggle('active', t === tab);
   });
@@ -1016,12 +1172,17 @@ function switchTab(tab) {
 }
 
 function renderAll() {
+  const directoryWasMigrated = ensureCategoryDirectory();
   renderPay();
   renderPlan();
   renderBanks();
+  refreshCategorySuggestions();
+  renderDirectory();
+  if (directoryWasMigrated) saveState();
 }
 
 initBatchRows();
+document.getElementById('bankSelect').addEventListener('change', refreshCategorySuggestions);
 renderAll();
 
 if ('serviceWorker' in navigator) {

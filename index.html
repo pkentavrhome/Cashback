@@ -675,6 +675,146 @@ function addOrUpdateDirectoryCategory(bankName, name, mccCodes) {
   return item;
 }
 
+// Стартовые данные из официальных материалов банков.
+// MCC добавляются только там, где банк явно опубликовал соответствие.
+// Версия нужна, чтобы импорт выполнялся один раз и не перезаписывал ручные правки.
+const OFFICIAL_DIRECTORY_SEED_VERSION = 1;
+const OFFICIAL_DIRECTORY_SEED = {
+  "Сбербанк": {
+    source: "Правила программы «СберСпасибо», редакция от 01.04.2026",
+    url: "https://www.sberbank.ru/common/img/spasibo/docs/loyalty/rules_010426.pdf",
+    categories: [
+      ["На все покупки", "*"],
+      ["Супермаркеты", "5309 5311 5331 5399 5412 5441 5451 5499 5411 9751 5422 5921"],
+      ["АЗС", "5541 5172 5542 5552 5983 9752"],
+      ["Автозапчасти", "5013 5271 5511 5531 5532 5533"],
+      ["Автоуслуги", "7531 7534 7535 7538 7549 4784 7511 7523 7542 5521 5551 5561 5571 5592 5598 5599"],
+      ["Штрафы ГИБДД", "9222"],
+      ["Кафе и рестораны", "5462 5812 5811 5813 5814"],
+      ["Одежда и обувь", "5137 5139 5611 5621 5631 5651 5661 5681 5699 5948 5931 5691 7296"],
+      ["Товары для дома", "2842 5200 5211 5231 5251 5261 5712 5713 5718 5719 5950 5998 5996 5021 5072 5074 5198 0780 1520 1711 1740 1750 1761 1771 1799 5039 5051 5714"],
+      ["Товары для детей", "5641 5945"],
+      ["Питомцы", "0742 5995"],
+      ["Такси и каршеринг", "7512 4121"],
+      ["Такси", "4121"],
+      ["Кино и театр", "7832 7833 7841 7922"],
+      ["Парфюмерия и косметика", "5977"],
+      ["Ювелирные изделия", "5094 5944"],
+      ["Цифровые товары", "5734 5735 5815 5816 5817 5818"],
+      ["Цветы", "5193 5992"],
+      ["Книги", "2741 5111 5192 5942 5943 5994"],
+      ["Образование", "8211 8220 8241 8244 8249 8299 8351"],
+      ["Салоны красоты", "7230 7297 7298"],
+      ["Транспорт", "4111 4131"],
+      ["Электроника и бытовая техника", "5065 5722 5732 5997"],
+      ["Медицинские услуги", "4119 5975 5976 8011 8021 8031 8041 8042 8043 8044 8049 8050 8062 8071 8099"],
+      ["Спорт и фитнес", "7941 7992 7997 5940 5941 5655"],
+      ["Аптеки", "5122 5912"],
+      ["Рестораны", "5462 5811 5812 5813"],
+      ["Фастфуд", "5814"],
+      ["ЖКХ", "4900"]
+    ]
+  },
+  "Альфа Банк": {
+    source: "Альфа-Банк: официальная страница «Гибкая Альфа-Карта»",
+    url: "https://alfabank.ru/lp/retail/dc/flexible-customer/",
+    categories: [
+      ["Здоровье", "4119 5047 5122 5912 5975 5976 8011 8021 8031 8041 8042 8043 8044 8049 8050 8062 8071 8099"],
+      ["Продукты", "5310 5311 5331 5411 5422 5441 5451 5462 5499 7278 9751 3990 3991"],
+      ["АЗС", "5172 5541 5542 5552 5983 9752 3990"],
+      ["Авто", "4784 5013 5271 5511 5521 5531 5532 5533 5551 5561 5571 5592 5598 5599 7511 7523 7531 7534 7535 7538 7542 7549 3991"],
+      ["Кафе и рестораны", "5811 5812 5813 3990"],
+      ["Одежда и обувь", "5137 5139 5611 5621 5631 5641 5651 5661 5681 5691 5697 5698 5699 5931 5948 7251 7296 7631"],
+      ["Красота", "5977 7230 7297 7298"],
+      ["Фастфуд", "5814 3990"],
+      ["Развлечения", "5733 5945 5946 5947 5949 5970 5971 5972 7032 7221 7395 7829 7832 7841 7911 7922 7929 7932 7933 7941 7991 7992 7993 7994 7996 7997 7998 7999"]
+    ]
+  },
+  "Т-Банк": {
+    source: "Т-Банк: справка по MCC для карты Drive; названия общих категорий — справка Black",
+    url: "https://www.tbank.ru/bank/help/credit-cards/drive/drive-bonus/get-bonus/",
+    categories: [
+      ["Все покупки", "*"],
+      ["Заправки", "5172 5541 5542 5552 5983"],
+      ["Автоуслуги", "5013 5531 5532 5533 5571 7523 7531 7534 7535 7538 7542 7549"],
+      ["Платные дороги", "4784"],
+      ["Такси", ""],
+      ["Аптеки", ""],
+      ["Рестораны", ""],
+      ["Спорт", ""]
+    ]
+  },
+  "Ozon банк": {
+    source: "Ozon Банк: официальный материал о категориях кешбэка; на странице приведены примеры MCC",
+    url: "https://finance.ozon.ru/blog/b2c/article/kak-vybrat-kategorii-keshbeka",
+    categories: [
+      ["1% на все покупки", "*"],
+      ["Супермаркеты", "5411"],
+      ["АЗС", "5541"],
+      ["Рестораны", "5812"],
+      ["Такси", "4121"]
+    ]
+  },
+  "ОТП банк": {
+    source: "ОТП Банк: текущая страница ОТП Карты и опубликованные правила бонусной программы",
+    url: "https://www.otpbank.ru/retail/cards/debit/otpcard/",
+    categories: [
+      ["На все покупки", "*"],
+      ["Супермаркеты", "5111 5422 5441 5451 5462 5499 5921"],
+      ["Кафе и рестораны", "5811 5812 5813 5814"],
+      ["АЗС", "5541 5542 5983"],
+      ["ЖКХ", "4900"],
+      ["Аптеки", "5122 5912", "Правила бонусной программы ОТП Банка (архивная редакция)", "https://www.otpbank.ru/upload/iblock/c5c/sgavpr3djwcyb6m1hmjat920ahe5h5t3.pdf"],
+      ["Такси", "4121", "Правила бонусной программы ОТП Банка (архивная редакция)", "https://www.otpbank.ru/upload/iblock/c5c/sgavpr3djwcyb6m1hmjat920ahe5h5t3.pdf"],
+      ["Штрафы", "9222 9311 9399 9390", "Правила бонусной программы ОТП Банка (архивная редакция)", "https://www.otpbank.ru/upload/iblock/c5c/sgavpr3djwcyb6m1hmjat920ahe5h5t3.pdf"],
+      ["Здоровье и медицина", ""],
+      ["Одежда и обувь", ""],
+      ["Обучение и образование", ""],
+      ["Творчество и хобби", ""],
+      ["Цветы", ""],
+      ["Авиабилеты", ""],
+      ["Автоуслуги", ""],
+      ["Детские товары", ""],
+      ["Дом и ремонт", ""],
+      ["Животные", ""],
+      ["Кино и развлечения", ""],
+      ["Книги", ""],
+      ["Красота", ""],
+      ["Отдых и путешествия", ""],
+      ["Спортивные товары", ""],
+      ["Транспорт", ""],
+      ["Фастфуд", ""],
+      ["Цифровые товары", ""]
+    ]
+  }
+};
+
+function seedOfficialCategoryDirectory() {
+  if (Number(appState.categoryDirectorySeedVersion || 0) >= OFFICIAL_DIRECTORY_SEED_VERSION) return false;
+  ensureCategoryDirectory();
+  let changed = false;
+  Object.entries(OFFICIAL_DIRECTORY_SEED).forEach(([bankName, bankSeed]) => {
+    if (!Array.isArray(appState.categoryDirectory[bankName])) appState.categoryDirectory[bankName] = [];
+    bankSeed.categories.forEach(([name, rawCodes, itemSource, itemUrl]) => {
+      const codes = rawCodes ? rawCodes.split(/\s+/).filter(Boolean) : [];
+      let item = appState.categoryDirectory[bankName].find(entry => normalizeCatName(entry.name) === normalizeCatName(name));
+      if (!item) {
+        item = { id: Date.now() + Math.floor(Math.random() * 100000), name, mcc: [] };
+        appState.categoryDirectory[bankName].push(item);
+        changed = true;
+      }
+      if (!Array.isArray(item.mcc)) item.mcc = [];
+      codes.forEach(code => {
+        if (!item.mcc.includes(code)) { item.mcc.push(code); changed = true; }
+      });
+      if (!item.source) { item.source = itemSource || bankSeed.source; changed = true; }
+      if (!item.sourceUrl) { item.sourceUrl = itemUrl || bankSeed.url; changed = true; }
+    });
+  });
+  appState.categoryDirectorySeedVersion = OFFICIAL_DIRECTORY_SEED_VERSION;
+  return true;
+}
+
 function refreshCategorySuggestions() {
   const bank = document.getElementById('bankSelect')?.value;
   const datalist = document.getElementById('batchCategorySuggestions');
@@ -706,6 +846,7 @@ function renderDirectory() {
     <div class="directory-row">
       <div style="font-weight:700;">${escapeHtml(item.name)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px;">MCC: ${item.mcc?.length ? escapeHtml(item.mcc.join(', ')) : 'не указаны'}</div>
+      ${item.sourceUrl ? `<div style="font-size:11px;margin-top:3px;"><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noopener noreferrer">Источник: ${escapeHtml(item.source || 'сайт банка')}</a></div>` : ''}
       <div class="directory-actions">
         <button class="btn btn-outline btn-sm" onclick="editDirectoryCategory('${escapeHtml(bank)}', ${Number(item.id)})">Изменить</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="deleteDirectoryCategory('${escapeHtml(bank)}', ${Number(item.id)})">Удалить</button>
@@ -1189,12 +1330,13 @@ function switchTab(tab) {
 
 function renderAll() {
   const directoryWasMigrated = ensureCategoryDirectory();
+  const officialDirectoryWasSeeded = seedOfficialCategoryDirectory();
   renderPay();
   renderPlan();
   renderBanks();
   refreshCategorySuggestions();
   renderDirectory();
-  if (directoryWasMigrated) saveState();
+  if (directoryWasMigrated || officialDirectoryWasSeeded) saveState();
 }
 
 initBatchRows();
